@@ -45,6 +45,12 @@ Config env vars: `DATA_URI`, `MODEL_BASE_URI`, `GIT_SHA` (required); `RANDOM_SEE
 State lives in the shared S3 bucket, one key per root, with S3 native locking
 (`use_lockfile`). Bootstrap and dev use separate keys under `aws-mlops-platform-lab/`.
 
+0. **ECS service-linked role (once per account).** ECS does not create it when the cluster is
+   created through the API, and `RunTask` fails without it. Skip if it already exists.
+   ```sh
+   aws iam get-role --role-name AWSServiceRoleForECS \
+     || aws iam create-service-linked-role --aws-service-name ecs.amazonaws.com
+   ```
 1. **Bootstrap (once, locally, with your own AWS credentials).** Creates the OIDC provider and roles.
    ```sh
    cd infra/bootstrap
