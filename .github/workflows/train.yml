@@ -1,0 +1,95 @@
+name: Train
+
+# Manual only: each run builds the image, then starts a chargeable Fargate task.
+# Requires environment `train` (restrict to main, add reviewers if desired) with variables:
+# AWS_TRAIN_ROLE_ARN, ECR_REPOSITORY_URL, ECS_CLUSTER, ECS_TASK_FAMILY,
+# TRAIN_SUBNET_ID, TRAIN_SECURITY_GROUP_ID, MODEL_BUCKET (all from `terraform output`).
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: train
+  cancel-in-progress: false
+
+env:
+  AWS_REGION: ap-southeast-2
+
+jobs:
+  train:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment: train
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      ECR_REPOSITORY_URL: ${{ vars.ECR_REPOSITORY_URL }}
+      CLUSTER: ${{ vars.ECS_CLUSTER }}
+      TASK_FAMILY: ${{ vars.ECS_TASK_FAMILY }}
+      SUBNET_ID: ${{ vars.TRAIN_SUBNET_ID }}
+      SECURITY_GROUP_ID: ${{ vars.TRAIN_SECURITY_GROUP_ID }}
+      MODEL_BUCKET: ${{ vars.MODEL_BUCKET }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: aws-actions/configure-aws-credentials@v6
+        with:
+          role-to-assume: ${{ vars.AWS_TRAIN_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Build and push image (tag = git SHA, immutable)
+        run: |
+          set -euo pipefail
+          REPO_NAME="${ECR_REPOSITORY_URL#*/}"
+          IMAGE="${ECR_REPOSITORY_URL}:${GITHUB_SHA}"
+          aws ecr get-login-password | docker login --username AWS --password-stdin "${ECR_REPOSITORY_URL%%/*}"
+          if aws ecr describe-images --repository-name "$REPO_NAME" --image-ids imageTag="$GITHUB_SHA" >/dev/null 2>&1; then
+            echo "Image $IMAGE already exists; reusing it."
+          else
+            docker build -f docker/Dockerfile --build-arg GIT_SHA="$GITHUB_SHA" -t "$IMAGE" .
+            docker push "$IMAGE"
+          fi
+          echo "IMAGE=$IMAGE" >> "$GITHUB_ENV"
+
+      - name: Register task definition revision with the new image
+        run: |
+          set -euo pipefail
+          NEW_DEF=$(aws ecs describe-task-definition --task-definition "$TASK_FAMILY" --query taskDefinition --output json \
+            | jq --arg image "$IMAGE" \
+                'del(.taskDefinitionArn, .revision, .status, .requiresAttributes, .compatibilities, .registeredAt, .registeredBy)
+                 | .containerDefinitions[0].image = $image')
+          TASK_DEF_ARN=$(aws ecs register-task-definition --cli-input-json "$NEW_DEF" --query taskDefinition.taskDefinitionArn --output text)
+          echo "TASK_DEF_ARN=$TASK_DEF_ARN" >> "$GITHUB_ENV"
+
+      - name: Run training task and wait
+        run: |
+          set -euo pipefail
+          TASK_ARN=$(aws ecs run-task \
+            --cluster "$CLUSTER" \
+            --task-definition "$TASK_DEF_ARN" \
+            --launch-type FARGATE \
+            --count 1 \
+            --network-configuration "awsvpcConfiguration={subnets=[$SUBNET_ID],securityGroups=[$SECURITY_GROUP_ID],assignPublicIp=ENABLED}" \
+            --query 'tasks[0].taskArn' --output text)
+          if [ "$TASK_ARN" = "None" ]; then echo "run-task returned no task"; exit 1; fi
+          echo "Started $TASK_ARN"
+          echo "TASK_ARN=$TASK_ARN" >> "$GITHUB_ENV"
+          aws ecs wait tasks-stopped --cluster "$CLUSTER" --tasks "$TASK_ARN"
+          EXIT_CODE=$(aws ecs describe-tasks --cluster "$CLUSTER" --tasks "$TASK_ARN" \
+            --query 'tasks[0].containers[0].exitCode' --output text)
+          if [ "$EXIT_CODE" != "0" ]; then
+            aws ecs describe-tasks --cluster "$CLUSTER" --tasks "$TASK_ARN" \
+              --query 'tasks[0].{stopped:stoppedReason,container:containers[0].reason}' --output json
+            echo "Training failed with exit code $EXIT_CODE"
+            exit 1
+          fi
+
+      - name: Show metrics
+        run: aws s3 cp "s3://${MODEL_BUCKET}/models/${GITHUB_SHA}/metrics.json" -
+
+      - name: Stop task if still running (failure, timeout or cancel)
+        if: always() && env.TASK_ARN != ''
+        run: aws ecs stop-task --cluster "$CLUSTER" --task "$TASK_ARN" --reason "workflow ended" >/dev/null 2>&1 || true

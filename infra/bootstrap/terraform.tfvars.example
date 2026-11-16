@@ -1,0 +1,4 @@
+# Copy to terraform.tfvars (git-ignored) and adjust.
+state_bucket_name = "<account-id>-terraform-state"
+# Immutable OIDC subject prefix; see the variable description for how to read it.
+github_sub_prefix = "repo:matthewtangx@210931036/aws-mlops-platform-lab@1459378211"

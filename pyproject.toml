@@ -1,0 +1,17 @@
+[project]
+name = "aws-mlops-platform-lab"
+version = "0.1.0"
+description = "Fraud detection training pipeline (v0.1)"
+requires-python = ">=3.9"
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py39"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP"]

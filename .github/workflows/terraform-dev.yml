@@ -1,0 +1,84 @@
+name: Terraform dev
+
+# Pull requests: plan only (read-only role). main / manual: plan, then a reviewer approves
+# the `dev` environment, then apply the saved plan. Requires repository variables
+# AWS_PLAN_ROLE_ARN and TF_STATE_BUCKET, and environment `dev` with required reviewers
+# and variable AWS_APPLY_ROLE_ARN.
+
+on:
+  pull_request:
+    paths: ["infra/envs/dev/**", "infra/modules/**", ".github/workflows/terraform-dev.yml"]
+  push:
+    branches: [main]
+    paths: ["infra/envs/dev/**", "infra/modules/**", ".github/workflows/terraform-dev.yml"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: terraform-dev
+  cancel-in-progress: false
+
+env:
+  TF_WORKING_DIR: infra/envs/dev
+  AWS_REGION: ap-southeast-2
+
+jobs:
+  plan:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v7
+      - uses: hashicorp/setup-terraform@v4
+        with:
+          terraform_version: 1.17.1
+      - uses: aws-actions/configure-aws-credentials@v6
+        with:
+          role-to-assume: ${{ vars.AWS_PLAN_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+      - name: Init
+        run: terraform init -input=false -lockfile=readonly -backend-config="bucket=${{ vars.TF_STATE_BUCKET }}"
+        working-directory: ${{ env.TF_WORKING_DIR }}
+      - run: terraform fmt -check -recursive ../..
+        working-directory: ${{ env.TF_WORKING_DIR }}
+      - run: terraform validate
+        working-directory: ${{ env.TF_WORKING_DIR }}
+      - name: Plan
+        run: terraform plan -input=false -out=tf.plan
+        working-directory: ${{ env.TF_WORKING_DIR }}
+      - uses: actions/upload-artifact@v7
+        with:
+          name: terraform-plan
+          path: ${{ env.TF_WORKING_DIR }}/tf.plan
+          retention-days: 3
+
+  apply:
+    needs: plan
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    environment: dev # required reviewers on this environment are the approval gate
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v7
+      - uses: hashicorp/setup-terraform@v4
+        with:
+          terraform_version: 1.17.1
+      - uses: aws-actions/configure-aws-credentials@v6
+        with:
+          role-to-assume: ${{ vars.AWS_APPLY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+      - uses: actions/download-artifact@v8
+        with:
+          name: terraform-plan
+          path: ${{ env.TF_WORKING_DIR }}
+      - name: Init
+        run: terraform init -input=false -lockfile=readonly -backend-config="bucket=${{ vars.TF_STATE_BUCKET }}"
+        working-directory: ${{ env.TF_WORKING_DIR }}
+      - name: Apply saved plan
+        run: terraform apply -input=false tf.plan
+        working-directory: ${{ env.TF_WORKING_DIR }}

@@ -1,0 +1,14 @@
+.git
+.github
+.kiro
+.venv
+infra
+tests
+docs
+data
+models
+**/__pycache__
+.pytest_cache
+.ruff_cache
+*.csv
+*.joblib
