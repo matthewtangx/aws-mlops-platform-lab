@@ -1,0 +1,4 @@
+# Copy to terraform.tfvars (git-ignored) and adjust.
+state_bucket_name = "<account-id>-terraform-state"
+github_owner      = "matthewtangx"
+github_repo       = "aws-mlops-platform-lab"
