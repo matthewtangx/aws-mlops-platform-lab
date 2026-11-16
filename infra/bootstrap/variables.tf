@@ -16,16 +16,14 @@ variable "environment" {
   default     = "dev"
 }
 
-variable "github_owner" {
+variable "github_sub_prefix" {
   type        = string
-  description = "GitHub user or organisation that owns the repository."
-  default     = "matthewtangx"
-}
-
-variable "github_repo" {
-  type        = string
-  description = "GitHub repository name allowed to assume the roles."
-  default     = "aws-mlops-platform-lab"
+  description = <<-EOT
+    Prefix of the GitHub OIDC `sub` claim for this repository. This repository uses immutable
+    subjects: `repo:<owner>@<owner_id>/<repo>@<repo_id>`. Read it with:
+    gh api repos/<owner>/<repo>/actions/oidc/customization/sub --jq .sub_claim_prefix
+  EOT
+  default     = "repo:matthewtangx@210931036/aws-mlops-platform-lab@1459378211"
 }
 
 variable "state_bucket_name" {

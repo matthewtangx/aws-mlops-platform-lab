@@ -35,7 +35,7 @@ Public subnet, Internet Gateway, `assignPublicIp` enabled. No NAT Gateway. Secur
 
 - Least-privilege IAM. Separate roles for the GitHub Actions deploy role, ECS task execution role, and ECS task role. Scope to specific resource ARNs.
 - OIDC via `aws-actions/configure-aws-credentials` with `role-to-assume` and `id-token: write` only on jobs that need it. No static AWS keys anywhere.
-- Two roles: `plan` (read-only plus state read/lock for this key prefix; trust `repo:<owner>/aws-mlops-platform-lab:pull_request` and `:ref:refs/heads/main`) and `apply` (trust only `environment:dev`, scoped to this project's resources). Role ARNs go in GitHub environment variables, not code.
+- Two roles: `plan` (read-only plus state read/lock for this key prefix; trust `<sub_prefix>:pull_request` and `:ref:refs/heads/main`, where `<sub_prefix>` is the repo's immutable OIDC prefix `repo:<owner>@<id>/<repo>@<id>` from `gh api repos/<owner>/<repo>/actions/oidc/customization/sub`) and `apply` (trust only `environment:dev`, scoped to this project's resources). Role ARNs go in GitHub environment variables, not code.
 - The account had no GitHub OIDC provider (checked), so `infra/bootstrap` creates it. Bootstrap is a separate root with its own state key (`aws-mlops-platform-lab/bootstrap/terraform.tfstate`), applied locally once. CI never touches it.
 - A third role, `train`, is trusted only via `environment:train` and can push to the project ECR repo, register/run the task definition, and read `models/*`.
 - Dev-created IAM roles carry the `aws-mlops-lab-task-boundary` permissions boundary, and the apply role may only create roles with it. GitHub roles use a name prefix (`aws-mlops-lab-gh-*`) the apply role cannot manage.

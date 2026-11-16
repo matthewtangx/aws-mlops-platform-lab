@@ -22,7 +22,7 @@ locals {
   state_key        = "${local.state_prefix}/terraform.tfstate"
   state_lock_key   = "${local.state_key}.tflock"
 
-  repo_sub = "repo:${var.github_owner}/${var.github_repo}"
+  repo_sub = var.github_sub_prefix
 }
 
 resource "aws_iam_openid_connect_provider" "github" {

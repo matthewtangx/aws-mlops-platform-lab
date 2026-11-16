@@ -69,6 +69,10 @@ State lives in the shared S3 bucket, one key per root, with S3 native locking
 
 ## Design notes
 
+- This repo uses GitHub's immutable OIDC subjects (`repo:<owner>@<id>/<repo>@<id>:...`), so the
+  trust policies take `github_sub_prefix` (bootstrap variable) instead of `owner/repo`. Check it with
+  `gh api repos/<owner>/<repo>/actions/oidc/customization/sub`.
+
 - The `gh-apply` and `gh-train` trust policies match `environment:<name>` only, so the environment's
   "deployment branches" rule is what restricts them to `main`. Set it. With a single maintainer,
   required reviewers only gate apply if "prevent self-review" is off.
