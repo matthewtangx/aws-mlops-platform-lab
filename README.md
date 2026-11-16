@@ -91,4 +91,4 @@ State lives in the shared S3 bucket, one key per root, with S3 native locking
 
 No NAT Gateway, load balancer or always-on compute. Costs are small: Fargate for the minutes a run
 takes (1 vCPU, 2 GiB), public IPv4 while a task runs, S3 storage (~150 MB dataset plus models),
-ECR storage (last 10 images, ~165 MB each), CloudWatch Logs (14-day retention).
+ECR storage (last 3 images, ~160 MB each, near the 500 MB free-tier allowance), CloudWatch Logs (14-day retention).

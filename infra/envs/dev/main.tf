@@ -29,6 +29,9 @@ module "ecr" {
   source = "../../modules/ecr"
 
   name = "${local.prefix}-training"
+
+  # Keeps stored images near the 500 MB ECR free-tier allowance.
+  max_image_count = 3
 }
 
 module "logging" {
